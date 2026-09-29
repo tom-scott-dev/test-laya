@@ -1,0 +1,23 @@
+{
+  "name": "laya-town",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A tiny town where NPCs are driven by the local Laya System-1 decision model",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch server/index.ts",
+    "start": "tsx server/index.ts",
+    "build": "tsc --noEmit",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@receptron/laya": "^0.1.0",
+    "express": "^4.21.2"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

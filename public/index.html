@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Laya Town — NPCs run by a local System-1 decision model</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header>
+      <h1>Laya Town</h1>
+      <div class="hud">
+        <span id="clock" class="pill">Morning</span>
+        <span id="modelPill" class="pill dim">model: cold</span>
+        <span id="brainPill" class="pill dim">brain: waiting</span>
+        <span id="latencyPill" class="pill dim">latency: -</span>
+      </div>
+    </header>
+
+    <main>
+      <figure class="stage">
+        <canvas id="game" width="960" height="640"></canvas>
+        <figcaption class="hint">
+          WASD / arrows to move · E to greet the nearest townsperson · F to toggle scripted demo brain
+        </figcaption>
+      </figure>
+
+      <aside class="inspect">
+        <h2>River of thought</h2>
+        <div id="inspectList" class="inspect-list"></div>
+      </aside>
+    </main>
+
+    <script src="game.js" defer></script>
+  </body>
+</html>

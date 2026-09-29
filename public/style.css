@@ -1,0 +1,154 @@
+:root {
+  --bg: #151a14;
+  --panel: #1f2a1f;
+  --panel-2: #26332a;
+  --ink: #dce8d8;
+  --muted: #8aa58a;
+  --accent: #c7f07a;
+  --alert: #f0a37a;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: radial-gradient(1200px 600px at 50% -10%, #1d2a1c, var(--bg));
+  color: var(--ink);
+  font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  min-height: 100vh;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 18px;
+  border-bottom: 1px solid #2d3d2d;
+}
+
+h1 {
+  font-size: 18px;
+  margin: 0;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+h1::after { content: " ¹"; color: var(--muted); font-weight: normal; }
+h1::before { content: 'L'; color: #fff; }
+
+.hud { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.pill {
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #2a3a2a;
+  border: 1px solid #3a4f3a;
+}
+.pill.dim { color: var(--muted); }
+.pill.err { color: var(--alert); border-color: #6a4a3a; }
+
+main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 14px;
+  padding: 14px;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.stage { margin: 0; }
+
+canvas {
+  width: 100%;
+  height: auto;
+  display: block;
+  border-radius: 10px;
+  border: 1px solid #33472f;
+  background: #7da45c;
+  image-rendering: auto;
+}
+
+.hint {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.inspect {
+  background: var(--panel);
+  border: 1px solid #33472f;
+  border-radius: 10px;
+  padding: 12px;
+  align-self: start;
+}
+
+.inspect h2 {
+  margin: 0 0 10px;
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.inspect-list { display: flex; flex-direction: column; gap: 10px; }
+
+.npc-card {
+  background: var(--panel-2);
+  border-radius: 8px;
+  padding: 8px 10px;
+  border-left: 3px solid #555;
+}
+
+.npc-card .top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.npc-card .name { font-weight: bold; font-size: 13px; }
+.npc-card .act { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.npc-card .decision {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--accent);
+}
+
+.npc-card .bar {
+  position: relative;
+  height: 5px;
+  border-radius: 3px;
+  background: #141d14;
+  overflow: hidden;
+  margin-top: 4px;
+}
+.npc-card .bar > i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--accent);
+}
+
+.npc-card .probs {
+  margin-top: 4px;
+  font-size: 10px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.npc-card .stats { margin-top: 3px; font-size: 10px; color: #a9c3a9; }
+
+.thought {
+  font-size: 11px;
+  font-style: italic;
+  color: #cfe3a9;
+  margin-top: 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
