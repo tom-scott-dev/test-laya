@@ -5,7 +5,9 @@ import {
   buildState,
   buildTalkState,
   decideQuestions,
+  questQuestions,
   talkQuestions,
+  type QuestSituation,
   type Situation,
   type TalkSituation,
 } from "./prompts.js";
@@ -111,6 +113,39 @@ export async function talk(situation: TalkSituation): Promise<TalkResult> {
       wantsMore: wantsMore.noul,
       reactionProbs: reaction.probabilities,
       dialogueProbs: dialogue.probabilities,
+      latencyMs: Math.round(latencyMs),
+      inputTokens: result.usage.input_tokens + result.usage.output_tokens,
+      model: result.model,
+    };
+  });
+}
+
+export interface QuestResult {
+  errand: string;
+  reward: number;
+  willingness: number;
+  errandProbs: Record<string, number>;
+  latencyMs: number;
+  inputTokens: number;
+  model: string;
+}
+
+export async function quest(situation: QuestSituation): Promise<QuestResult> {
+  const laya = await ensureLaya();
+  return runExclusive(async () => {
+    const started = performance.now();
+    const result = (await laya.systemOne(buildQuestState(situation), questQuestions)) as SystemOneResult<
+      typeof questQuestions
+    >;
+    const latencyMs = performance.now() - started;
+    const errand = result.answers.errand as ChoiceAnswer;
+    const reward = result.answers.reward as ScoreAnswer;
+    const willingness = result.answers.willingness as NoulAnswer;
+    return {
+      errand: errand.choice,
+      reward: reward.score,
+      willingness: willingness.noul,
+      errandProbs: errand.probabilities,
       latencyMs: Math.round(latencyMs),
       inputTokens: result.usage.input_tokens + result.usage.output_tokens,
       model: result.model,

@@ -11,17 +11,22 @@
       <h1>Laya Town</h1>
       <div class="hud">
         <span id="clock" class="pill">Morning</span>
+        <span id="goldEl" class="pill dim">gold: 0</span>
+        <span id="invEl" class="pill dim">inventory: -</span>
         <span id="modelPill" class="pill dim">model: cold</span>
         <span id="brainPill" class="pill dim">brain: waiting</span>
         <span id="latencyPill" class="pill dim">latency: -</span>
       </div>
     </header>
 
+    <div id="questTracker" class="quest-tracker hidden"></div>
+    <div id="toasts" class="toasts"></div>
+
     <main>
       <figure class="stage">
         <canvas id="game" width="960" height="640"></canvas>
         <figcaption class="hint">
-          WASD / arrows to move · E to greet the nearest townsperson · F to toggle scripted demo brain
+          WASD / arrows to move · E to talk/quest · B to shop at the market · F to toggle scripted demo brain
         </figcaption>
       </figure>
 
@@ -30,6 +35,14 @@
         <div id="inspectList" class="inspect-list"></div>
       </aside>
     </main>
+
+    <div id="marketPanel" class="overlay hidden">
+      <div class="panel">
+        <h2>Market stall</h2>
+        <ul id="marketList"></ul>
+        <p class="panel-note">gold: <span id="marketGold">0</span> · keys 1-4 to buy, Esc to leave</p>
+      </div>
+    </div>
 
     <script src="game.js" defer></script>
   </body>

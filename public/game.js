@@ -20,10 +20,17 @@ const ctx = canvas.getContext("2d");
 
 const $ = (id) => document.getElementById(id);
 const clockEl = $("clock");
+const goldEl = $("goldEl");
+const invEl = $("invEl");
 const modelEl = $("modelPill");
 const brainEl = $("brainPill");
 const latencyEl = $("latencyPill");
 const inspectList = $("inspectList");
+const questEl = $("questTracker");
+const toastsEl = $("toasts");
+const marketPanel = $("marketPanel");
+const marketList = $("marketList");
+const marketGold = $("marketGold");
 
 const SPOTS = [
   { id: "the pond", x: 780, y: 150, r: 70, kind: "pond" },
@@ -33,6 +40,11 @@ const SPOTS = [
   { id: "the big tree", x: 60, y: 300, kind: "tree" },
 ];
 const spotById = Object.fromEntries(SPOTS.map((s) => [s.id, s]));
+
+const LAMPS = [
+  { x: 210, y: 130, r: 95 },
+  { x: 525, y: 470, r: 95 },
+];
 
 const EVENTS = [
   "A merchant caravan is camped by the east gate.",
@@ -45,51 +57,39 @@ const EVENTS = [
   "Rumor has it a treasure map is being traded near the plaza.",
 ];
 
+const ITEMS = [
+  { id: "herb", label: "herbs", short: "herb", spot: "the garden", color: "#6fae3c", price: 5 },
+  { id: "bread", label: "bread", short: "bread", spot: "the market", color: "#c98a4b", price: 8 },
+  { id: "fish", label: "fish", short: "fish", spot: "the pond", color: "#5b8fd4", price: 10 },
+  { id: "berry", label: "berries", short: "berry", spot: "the big tree", color: "#d45b5b", price: 4 },
+];
+const itemById = Object.fromEntries(ITEMS.map((i) => [i.id, i]));
+
 const NPCS = [
   {
-    id: "mira",
-    name: "Mira",
-    role: "Baker",
+    id: "mira", name: "Mira", role: "Baker",
     persona: "a cheerful middle-aged baker who has run the corner bread stand for twenty years",
-    color: "#c0392b",
-    favorite: "the market",
-    x: 300, y: 220,
+    color: "#c0392b", favorite: "the market", x: 300, y: 220,
   },
   {
-    id: "bram",
-    name: "Bram",
-    role: "Fisherman",
+    id: "bram", name: "Bram", role: "Fisherman",
     persona: "an old reclusive fisherman who spends most days by the koi pond",
-    color: "#2c6e8f",
-    favorite: "the pond",
-    x: 700, y: 260,
+    color: "#2c6e8f", favorite: "the pond", x: 700, y: 260,
   },
   {
-    id: "lena",
-    name: "Lena",
-    role: "Shepherd",
+    id: "lena", name: "Lena", role: "Shepherd",
     persona: "a shy young shepherd who misses her flock and watches the town from the edges",
-    color: "#7d8c3f",
-    favorite: "the garden",
-    x: 200, y: 420,
+    color: "#7d8c3f", favorite: "the garden", x: 200, y: 420,
   },
   {
-    id: "kofi",
-    name: "Kofi",
-    role: "Merchant",
+    id: "kofi", name: "Kofi", role: "Merchant",
     persona: "a fast-talking traveling merchant always gauging who to trade with",
-    color: "#8e44ad",
-    favorite: "the market",
-    x: 120, y: 160,
+    color: "#8e44ad", favorite: "the market", x: 120, y: 160,
   },
   {
-    id: "wells",
-    name: "Wells",
-    role: "Guard",
+    id: "wells", name: "Wells", role: "Guard",
     persona: "the town guard on rounds, cautious, observant, and quietly kind",
-    color: "#575d66",
-    favorite: "the bench",
-    x: 500, y: 480,
+    color: "#575d66", favorite: "the bench", x: 500, y: 480,
   },
 ];
 
@@ -121,6 +121,8 @@ const npcs = NPCS.map((n) => ({
   ...n,
   tx: n.x, ty: n.y,
   mood: 1,
+  favor: 25 + Math.floor(Math.random() * 20),
+  questCooldown: 0,
   activity: "arriving in town",
   bubble: "silence",
   wantsToTalk: 0,
@@ -143,6 +145,19 @@ npcs.forEach((n, i) => {
   n.nextDecisionAt = performance.now() + 600 + i * 500;
 });
 
+const game = {
+  gold: 0,
+  inventory: { herb: 0, bread: 0, fish: 0, berry: 0 },
+  quest: null,
+  marketOpen: false,
+  wolf: null,
+  wolfNextAt: performance.now() + 20000,
+  flashUntil: 0,
+};
+
+let pickups = [];
+spawnPickups();
+
 let worldNotes = "";
 let eventAt = performance.now() + 4000;
 let cycleStart = performance.now();
@@ -155,8 +170,15 @@ let latencySamples = [];
 
 const keys = {};
 window.addEventListener("keydown", (e) => {
+  if (["arrowup", "arrowdown", "arrowleft", "arrowright", " "].includes(e.key.toLowerCase())) {
+    e.preventDefault();
+  }
   keys[e.key.toLowerCase()] = true;
   if (e.key === "e" || e.key === "E") tryTalk();
+  if (e.key === "b" || e.key === "B") toggleMarket();
+  if (e.key === "Escape") closeMarket();
+  const n = parseInt(e.key, 10);
+  if (n >= 1 && n <= 4 && game.marketOpen) buyItem(ITEMS[n - 1].id);
   if (e.key === "f" || e.key === "F") {
     forcedScripted = !forcedScripted;
     brainEl.textContent = `brain: ${forcedScripted ? "scripted (F)" : brainOnline ? "laya" : "waiting"}`;
@@ -166,10 +188,17 @@ window.addEventListener("keyup", (e) => { keys[e.key.toLowerCase()] = false; });
 
 function timeOfDay() {
   const t = ((performance.now() - cycleStart) % CYCLE_MS) / CYCLE_MS;
-  if (t < 0.25) return { label: "morning", clock: 7 + Math.floor(t / 0.25 * 5) };
-  if (t < 0.5) return { label: "noon", clock: 12 + Math.floor((t - 0.25) / 0.25 * 4) };
-  if (t < 0.75) return { label: "dusk", clock: 16 + Math.floor((t - 0.5) / 0.25 * 5) };
-  return { label: "night", clock: 21 + Math.floor((t - 0.75) / 0.25 * 6) };
+  if (t < 0.25) return { label: "morning", clock: 7 + Math.floor((t / 0.25) * 5) };
+  if (t < 0.5) return { label: "noon", clock: 12 + Math.floor(((t - 0.25) / 0.25) * 4) };
+  if (t < 0.75) return { label: "dusk", clock: 16 + Math.floor(((t - 0.5) / 0.25) * 5) };
+  return { label: "night", clock: 21 + Math.floor(((t - 0.75) / 0.25) * 6) };
+}
+
+function relationship(npc) {
+  if (npc.favor < 30) return "a stranger";
+  if (npc.favor < 60) return "an acquaintance";
+  if (npc.favor < 85) return "a friend";
+  return "a close friend";
 }
 
 function nearbyCompanions(npc) {
@@ -184,6 +213,9 @@ function makeSituation(npc) {
   const tod = timeOfDay();
   const near = Math.hypot(npc.x - player.x, npc.y - player.y) < 150;
   const talked = performance.now() - player.lastTalkAt < 25000;
+  const questLine = game.quest && game.quest.giverId === npc.id
+    ? " The traveler is currently helping you with an errand."
+    : "";
   return {
     name: npc.name,
     persona: npc.persona,
@@ -193,7 +225,7 @@ function makeSituation(npc) {
     playerNear: near,
     previouslyTalked: talked,
     companionsNearby: nearbyCompanions(npc),
-    worldNotes,
+    worldNotes: `${worldNotes} The traveler is ${relationship(npc)} to you.${questLine}`,
   };
 }
 
@@ -241,8 +273,7 @@ function applyDecision(npc, d) {
     }
     case "rest_or_depart": {
       const bench = spotById["the bench"];
-      const far = Math.random() < 0.5;
-      if (far) {
+      if (Math.random() < 0.5) {
         setTarget(npc, 60 + Math.random() * (W - 120), 60 + Math.random() * (H - 120));
         npc.activity = "stepping away";
       } else {
@@ -344,13 +375,7 @@ async function requestDecision(npc) {
   applyDecision(npc, d);
 }
 
-async function tryTalk() {
-  const target = npcs
-    .filter((n) => Math.hypot(n.x - player.x, n.y - player.y) < 100)
-    .sort((a, b) => Math.hypot(a.x - player.x, a.y - player.y) - Math.hypot(b.x - player.x, b.y - player.y))[0];
-  if (!target) return;
-  player.lastTalkAt = performance.now();
-  target.nextDecisionAt = performance.now() + 400;
+async function greet(npc) {
   const tod = timeOfDay();
   let result = null;
   if (brainOnline && !forcedScripted) {
@@ -360,12 +385,12 @@ async function tryTalk() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           situation: {
-            name: target.name,
-            persona: target.persona,
+            name: npc.name,
+            persona: npc.persona,
             timeOfDay: tod.label,
-            location: target.locationHint || target.favorite,
-            activity: target.activity,
-            worldNotes,
+            location: npc.locationHint || npc.favorite,
+            activity: npc.activity,
+            worldNotes: `${worldNotes} The traveler is ${relationship(npc)} to you.`,
           },
         }),
       });
@@ -381,14 +406,324 @@ async function tryTalk() {
       latencyMs: null,
     };
   }
-  target.speech = pick(TALK_LINES[result.dialogue] || TALK_LINES.greeting);
-  target.speechUntil = performance.now() + 4200;
-  target.speechReaction = result.reaction;
-  target.mood = result.talkMood;
-  target.thought = "";
-  target.thoughtUntil = 0;
-  target.activity = `talking to the traveler (${result.reaction})`;
-  target.facing = Math.atan2(player.y - target.y, player.x - target.x);
+  npc.speech = pick(TALK_LINES[result.dialogue] || TALK_LINES.greeting);
+  npc.speechUntil = performance.now() + 4200;
+  npc.speechReaction = result.reaction;
+  npc.mood = result.talkMood;
+  npc.thought = "";
+  npc.thoughtUntil = 0;
+  npc.activity = `talking to the traveler (${result.reaction})`;
+  npc.facing = Math.atan2(player.y - npc.y, player.x - npc.x);
+  return result;
+}
+
+async function maybeOfferQuest(npc) {
+  if (game.quest || performance.now() < npc.questCooldown) return;
+  const tod = timeOfDay();
+  let r = null;
+  if (brainOnline && !forcedScripted) {
+    try {
+      const res = await fetch("/api/quest", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          situation: {
+            name: npc.name,
+            persona: npc.persona,
+            relationship: relationship(npc),
+            timeOfDay: tod.label,
+            worldNotes,
+          },
+        }),
+      });
+      if (res.ok) r = (await res.json()).result;
+    } catch (err) { /* fall through to scripted */ }
+  }
+  if (!r) {
+    r = {
+      errand: Math.random() < 0.5 ? "fetch_item" : "deliver_message",
+      reward: Math.floor(Math.random() * 4),
+      willingness: Math.random(),
+    };
+  }
+  npc.questCooldown = performance.now() + 45000;
+  if (r.errand === "rest_and_return" || r.willingness < 0.4) {
+    toast(`${npc.name} has nothing to ask right now.`);
+    return;
+  }
+  let q;
+  if (r.errand === "fetch_item") {
+    const item = ITEMS[Math.floor(Math.random() * ITEMS.length)];
+    const need = 3;
+    q = {
+      giverId: npc.id, giverName: npc.name, type: "fetch",
+      item: item.id, need,
+      rewardGold: 8 + r.reward * 6, rewardFavor: 10 + r.reward * 3,
+    };
+    spawnQuestPickups(item.id, need, item.spot);
+    toast(`${npc.name} needs ${need} ${item.label}. Gather them nearby.`);
+  } else {
+    const others = npcs.filter((o) => o.id !== npc.id);
+    const t = pick(others);
+    q = {
+      giverId: npc.id, giverName: npc.name, type: "message",
+      targetId: t.id, targetName: t.name, delivered: false,
+      rewardGold: 8 + r.reward * 6, rewardFavor: 10 + r.reward * 3,
+    };
+    toast(`${npc.name} sends a message to ${t.name}. Deliver it.`);
+  }
+  game.quest = q;
+  questEl.classList.remove("hidden");
+  updateQuestTracker();
+}
+
+function questDone(q) {
+  return q.type === "fetch" ? game.inventory[q.item] >= q.need : q.delivered;
+}
+
+function turnIn(npc, q) {
+  if (q.type === "fetch") {
+    game.inventory[q.item] = Math.max(0, game.inventory[q.item] - q.need);
+  }
+  game.gold += q.rewardGold;
+  npc.favor = Math.min(100, npc.favor + q.rewardFavor);
+  toast(`quest complete! +${q.rewardGold} gold, +${q.rewardFavor} favor with ${npc.name}`);
+  game.quest = null;
+  questEl.classList.add("hidden");
+  npc.questCooldown = performance.now() + 60000;
+  npc.mood = 3;
+  updateHUD();
+  if (game.marketOpen) updateMarketPanel();
+}
+
+function remindQuest(q) {
+  if (q.type === "fetch") {
+    const need = Math.max(0, q.need - game.inventory[q.item]);
+    toast(`${q.giverName} still needs ${need} ${itemById[q.item].label}.`);
+  } else {
+    toast(`still delivering ${q.giverName}'s message to ${q.targetName}.`);
+  }
+}
+
+async function deliverMessage(npc, q) {
+  await greet(npc);
+  q.delivered = true;
+  npc.favor = Math.min(100, npc.favor + 4);
+  toast(`message delivered to ${npc.name}. Return to ${q.giverName}.`);
+  updateQuestTracker();
+}
+
+async function tryTalk() {
+  const near = npcs
+    .filter((n) => Math.hypot(n.x - player.x, n.y - player.y) < 110)
+    .sort((a, b) => Math.hypot(a.x - player.x, a.y - player.y) - Math.hypot(b.x - player.x, b.y - player.y))[0];
+  if (!near) return;
+  player.lastTalkAt = performance.now();
+  const q = game.quest;
+  if (q && q.type === "message" && q.targetId === near.id && !q.delivered) {
+    await deliverMessage(near, q);
+    return;
+  }
+  if (q && q.giverId === near.id) {
+    if (questDone(q)) {
+      turnIn(near, q);
+    } else {
+      remindQuest(q);
+    }
+    return;
+  }
+  await greet(near);
+  maybeOfferQuest(near);
+}
+
+function toggleMarket() {
+  const m = spotById["the market"];
+  if (Math.hypot(player.x - m.x, player.y - m.y) > 120) {
+    toast("too far from the market stall", true);
+    return;
+  }
+  game.marketOpen = !game.marketOpen;
+  marketPanel.classList.toggle("hidden", !game.marketOpen);
+  if (game.marketOpen) updateMarketPanel();
+}
+
+function closeMarket() {
+  game.marketOpen = false;
+  marketPanel.classList.add("hidden");
+}
+
+function updateMarketPanel() {
+  marketGold.textContent = game.gold;
+  marketList.innerHTML = ITEMS.map(
+    (i, idx) => `<li data-id="${i.id}"><span>${idx + 1}. ${i.label} <span style="color:var(--muted)">(${game.inventory[i.id]})</span></span><span class="price">${i.price}g</span></li>`
+  ).join("");
+  marketList.querySelectorAll("li").forEach((li) => {
+    li.addEventListener("click", () => buyItem(li.dataset.id));
+  });
+}
+
+function buyItem(id) {
+  const it = itemById[id];
+  if (game.gold < it.price) {
+    toast("not enough gold", true);
+    return;
+  }
+  game.gold -= it.price;
+  game.inventory[id]++;
+  toast(`bought ${it.label}`);
+  updateHUD();
+  updateMarketPanel();
+}
+
+function spawnPickups() {
+  pickups = [];
+  const defs = {
+    herb: { spot: "the garden", count: 6 },
+    bread: { spot: "the market", count: 6 },
+    fish: { spot: "the pond", count: 4, ring: true },
+    berry: { spot: "the big tree", count: 5 },
+  };
+  for (const [id, d] of Object.entries(defs)) {
+    const spot = spotById[d.spot];
+    for (let i = 0; i < d.count; i++) {
+      let x, y;
+      if (d.ring) {
+        const a = Math.random() * Math.PI * 2;
+        const r = spot.r + 34 + Math.random() * 36;
+        x = spot.x + Math.cos(a) * r;
+        y = spot.y + Math.sin(a) * r;
+      } else {
+        x = spot.x + (Math.random() - 0.5) * 110;
+        y = spot.y + (Math.random() - 0.5) * 76;
+      }
+      const pond = spotById["the pond"];
+      if (Math.hypot(x - pond.x, y - pond.y) < pond.r + 24) {
+        const a = Math.atan2(y - pond.y, x - pond.x);
+        x = pond.x + Math.cos(a) * (pond.r + 24);
+        y = pond.y + Math.sin(a) * (pond.r + 24);
+      }
+      pickups.push({
+        id, x: Math.max(28, Math.min(W - 28, x)), y: Math.max(28, Math.min(H - 28, y)),
+        taken: false, respawnAt: 0, quest: false,
+      });
+    }
+  }
+}
+
+function spawnQuestPickups(itemId, count, spotId) {
+  const spot = spotById[spotId];
+  for (let i = 0; i < count; i++) {
+    let x = spot.x + (Math.random() - 0.5) * 180;
+    let y = spot.y + (Math.random() - 0.5) * 90;
+    const pond = spotById["the pond"];
+    if (Math.hypot(x - pond.x, y - pond.y) < pond.r + 24) {
+      const a = Math.atan2(y - pond.y, x - pond.x);
+      x = pond.x + Math.cos(a) * (pond.r + 24);
+      y = pond.y + Math.sin(a) * (pond.r + 24);
+    }
+    pickups.push({
+      id: itemId, x: Math.max(28, Math.min(W - 28, x)), y: Math.max(28, Math.min(H - 28, y)),
+      taken: false, respawnAt: 0, quest: true,
+    });
+  }
+}
+
+function updatePickups(now) {
+  for (const p of pickups) {
+    if (p.taken) {
+      if (!p.quest && now > p.respawnAt) p.taken = false;
+      continue;
+    }
+    if (Math.hypot(p.x - player.x, p.y - player.y) < 30) {
+      p.taken = true;
+      game.inventory[p.id]++;
+      const q = game.quest;
+      if (p.quest && q && q.type === "fetch" && q.item === p.id) {
+        toast(`+1 ${itemById[p.id].label} for quest (${Math.min(game.inventory[p.id], q.need)}/${q.need})`);
+        updateQuestTracker();
+      } else if (p.quest) {
+        toast(`+1 ${itemById[p.id].label}`);
+      }
+      if (!p.quest) p.respawnAt = now + 30000;
+      updateHUD();
+    }
+  }
+}
+
+function updateWolf(dt, now) {
+  const tod = timeOfDay().label;
+  if (tod !== "night") {
+    game.wolf = null;
+    return;
+  }
+  if (!game.wolf) {
+    if (now < game.wolfNextAt) return;
+    const edge = Math.floor(Math.random() * 4);
+    const m = 30;
+    const w = {
+      x: edge === 0 ? m : edge === 1 ? W - m : Math.random() * W,
+      y: edge === 2 ? m : edge === 3 ? H - m : Math.random() * H,
+      spawnUntil: now + 30000,
+    };
+    game.wolf = w;
+    toast("a wolf is prowling the night! stay near the lampposts", true);
+  }
+  const w = game.wolf;
+  const dx = player.x - w.x, dy = player.y - w.y;
+  const d = Math.hypot(dx, dy);
+  let vx = dx / (d || 1), vy = dy / (d || 1);
+  for (const lamp of LAMPS) {
+    const ld = Math.hypot(lamp.x - w.x, lamp.y - w.y);
+    if (ld < lamp.r) {
+      vx -= (lamp.x - w.x) / (ld || 1) * 2.2;
+      vy -= (lamp.y - w.y) / (ld || 1) * 2.2;
+    }
+  }
+  const vl = Math.hypot(vx, vy) || 1;
+  w.x += (vx / vl) * 92 * dt;
+  w.y += (vy / vl) * 92 * dt;
+  w.angle = Math.atan2(dy, dx);
+  if (d < 28) {
+    const stolen = Math.max(1, Math.round(game.gold * 0.15));
+    game.gold = Math.max(0, game.gold - stolen);
+    game.flashUntil = now + 350;
+    toast(`the wolf caught you! it stole ${stolen} gold`, true);
+    game.wolf = null;
+    game.wolfNextAt = now + 20000;
+    updateHUD();
+  } else if (now > w.spawnUntil) {
+    game.wolf = null;
+    game.wolfNextAt = now + 15000 + Math.random() * 20000;
+  }
+}
+
+function updateQuestTracker() {
+  const q = game.quest;
+  if (!q) { questEl.classList.add("hidden"); return; }
+  let body;
+  if (q.type === "fetch") {
+    body = `Bring ${q.need} ${itemById[q.item].label} to ${q.giverName} — you have ${Math.min(game.inventory[q.item], q.need)} of ${q.need}.`;
+  } else {
+    body = q.delivered
+      ? `Message delivered to ${q.targetName}. Return to ${q.giverName}.`
+      : `Deliver a message to ${q.targetName} — press E near them.`;
+  }
+  questEl.innerHTML = `<div class="qt-title">${q.giverName}'s request</div>
+    <div class="qt-body">${body}</div>
+    <div class="qt-meta">Reward: ${q.rewardGold} gold · +${q.rewardFavor} favor</div>`;
+}
+
+function updateHUD() {
+  goldEl.textContent = `gold: ${game.gold}`;
+  invEl.textContent = "inventory: " + ITEMS.map((i) => `${i.short} x${game.inventory[i.id]}`).join("  ");
+}
+
+function toast(text, warn = false) {
+  const el = document.createElement("div");
+  el.className = "toast" + (warn ? " warn" : "");
+  el.textContent = text;
+  toastsEl.appendChild(el);
+  setTimeout(() => el.remove(), 3800);
 }
 
 function pollHealth() {
@@ -422,7 +757,6 @@ pollHealth();
 
 function step(dt) {
   const now = performance.now();
-
   const tod = timeOfDay();
   clockEl.textContent = `${tod.label} · ${String(tod.clock).padStart(2, "0")}:00`;
 
@@ -459,7 +793,7 @@ function step(dt) {
       if (d < 40 && npc.activity === "heading toward the traveler") {
         npc.activity = "greeting the traveler";
       }
-    } else if (d <= 6 && npc.tx !== npc.x && npc.ty !== npc.y) {
+    } else if (d <= 6 && (npc.tx !== npc.x || npc.ty !== npc.y)) {
       npc.x = npc.tx; npc.y = npc.ty;
       if (npc.activity === "resting") npc.activity = "resting on the bench";
       if (npc.activity === "watching from a distance") npc.activity = "watching the traveler";
@@ -468,6 +802,15 @@ function step(dt) {
   }
 
   separate();
+  updatePickups(now);
+  updateWolf(dt, now);
+
+  if (game.marketOpen) {
+    const m = spotById["the market"];
+    if (Math.hypot(player.x - m.x, player.y - m.y) > 160) closeMarket();
+  }
+  updateQuestTracker();
+  updateHUD();
 }
 
 function keepOutOfPond(e) {
@@ -511,13 +854,29 @@ function draw() {
   drawBench();
   drawTrees();
   drawFence();
+  drawPickupSprites();
+
+  const tod = timeOfDay().label;
+  if (tod === "dusk" || tod === "night") {
+    ctx.fillStyle = tod === "dusk" ? "rgba(255,150,60,0.10)" : "rgba(16,22,40,0.30)";
+    ctx.fillRect(0, 0, W, H);
+  }
+  if (tod === "night") drawLamps();
 
   const ordered = [...npcs].sort((a, b) => a.y - b.y);
   for (const npc of ordered) drawPerson(npc, true);
   drawPerson(player, false);
+  if (game.wolf) drawWolf(game.wolf);
 
   drawBubbles(ordered);
+  drawQuestArrow();
   drawEventTicker();
+  drawHints();
+
+  if (performance.now() < game.flashUntil) {
+    ctx.fillStyle = "rgba(220,50,40,0.35)";
+    ctx.fillRect(0, 0, W, H);
+  }
 }
 
 function drawPath() {
@@ -636,6 +995,141 @@ function drawFence() {
   }
 }
 
+function drawPickupSprites() {
+  const now = performance.now();
+  for (const p of pickups) {
+    if (p.taken) continue;
+    drawItemSprite(p.id, p.x, p.y, p.quest, now);
+  }
+}
+
+function drawItemSprite(id, x, y, quest, now) {
+  if (quest) {
+    const pulse = 1 + Math.sin(now / 200) * 0.12;
+    ctx.strokeStyle = "rgba(255,224,120,0.9)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(x, y, 13 * pulse, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.save();
+  ctx.translate(x, y);
+  switch (id) {
+    case "herb":
+      ctx.fillStyle = "#3f7a2a";
+      for (let i = -1; i <= 1; i++) {
+        ctx.beginPath();
+        ctx.ellipse(i * 6, 0, 5, 3, i * 0.7, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      break;
+    case "bread":
+      ctx.fillStyle = "#c98a4b";
+      ctx.beginPath();
+      ctx.roundRect(-7, -5, 14, 10, 4);
+      ctx.fill();
+      ctx.fillStyle = "#a96f38";
+      ctx.fillRect(-4, -2, 8, 1);
+      break;
+    case "fish":
+      ctx.fillStyle = "#5b8fd4";
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 8, 5, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(7, 0);
+      ctx.lineTo(12, -4);
+      ctx.lineTo(12, 4);
+      ctx.closePath();
+      ctx.fill();
+      break;
+    case "berry":
+      ctx.fillStyle = "#d45b5b";
+      for (let i = 0; i < 3; i++) {
+        const a = (i / 3) * Math.PI * 2;
+        ctx.beginPath();
+        ctx.arc(Math.cos(a) * 4, Math.sin(a) * 4 - 1, 3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      break;
+  }
+  ctx.restore();
+}
+
+function drawLamps() {
+  for (const lamp of LAMPS) {
+    const g = ctx.createRadialGradient(lamp.x, lamp.y, 4, lamp.x, lamp.y, lamp.r);
+    g.addColorStop(0, "rgba(255,224,140,0.32)");
+    g.addColorStop(1, "rgba(255,224,140,0)");
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(lamp.x, lamp.y, lamp.r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#ffe08c";
+    ctx.beginPath();
+    ctx.arc(lamp.x, lamp.y, 5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+function drawWolf(w) {
+  ctx.save();
+  ctx.translate(w.x, w.y);
+  ctx.rotate(w.angle);
+  ctx.fillStyle = "#5a5f66";
+  ctx.beginPath();
+  ctx.ellipse(0, 0, 15, 9, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#6d737c";
+  ctx.beginPath();
+  ctx.arc(12, -3, 6, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(16, -6);
+  ctx.lineTo(24, -10);
+  ctx.lineTo(18, -1);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = "#ffd27a";
+  ctx.beginPath();
+  ctx.arc(13, -4, 1.6, 0, Math.PI * 2);
+  ctx.arc(10, -4, 1.6, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawQuestArrow() {
+  const q = game.quest;
+  if (!q) return;
+  const giver = npcs.find((n) => n.id === q.giverId);
+  let tx, ty;
+  if (q.type === "fetch") {
+    const target = pickups.find((p) => p.quest && !p.taken && p.id === q.item) ||
+      (game.inventory[q.item] >= q.need ? giver : null);
+    if (target) { tx = target.x; ty = target.y; }
+    else if (giver) { tx = giver.x; ty = giver.y; }
+    else return;
+  } else {
+    const target = q.delivered ? giver : npcs.find((n) => n.id === q.targetId);
+    if (!target) return;
+    tx = target.x; ty = target.y;
+  }
+  const a = Math.atan2(ty - player.y, tx - player.x);
+  const ax = player.x + Math.cos(a) * 34;
+  const ay = player.y + Math.sin(a) * 34;
+  ctx.save();
+  ctx.translate(ax, ay);
+  ctx.rotate(a);
+  ctx.fillStyle = "#ffe08c";
+  ctx.beginPath();
+  ctx.moveTo(12, 0);
+  ctx.lineTo(-6, -7);
+  ctx.lineTo(-6, 7);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
 function drawPerson(e, isNpc) {
   const body = isNpc ? e.color : "#3d6bb5";
   const x = e.x, y = e.y;
@@ -663,7 +1157,7 @@ function drawPerson(e, isNpc) {
   ctx.fill();
 
   const faceDir = e.facing ?? player.dir;
-  const look = isNpc ? Math.cos(faceDir) * 3 : Math.cos(player.dir) * 3;
+  const look = Math.cos(faceDir) * 3;
   ctx.fillStyle = "#241a12";
   ctx.beginPath();
   ctx.arc(-3 + look, -10, 1.6, 0, Math.PI * 2);
@@ -756,6 +1250,21 @@ function drawEventTicker() {
   ctx.fillText(worldNotes, W / 2, 17);
 }
 
+function drawHints() {
+  ctx.font = "12px monospace";
+  ctx.textAlign = "center";
+  const m = spotById["the market"];
+  if (!game.marketOpen && Math.hypot(player.x - m.x, player.y - m.y) < 120) {
+    ctx.fillStyle = "#24301f";
+    ctx.fillText("B — shop", m.x, m.y + 60);
+  }
+  const nearNpc = npcs.some((n) => Math.hypot(n.x - player.x, n.y - player.y) < 110);
+  if (nearNpc) {
+    ctx.fillStyle = "#24301f";
+    ctx.fillText("E — talk", player.x, player.y - 34);
+  }
+}
+
 function renderInspector() {
   const now = performance.now();
   for (const npc of npcs) {
@@ -771,7 +1280,8 @@ function renderInspector() {
       card.bar.style.width = `${topPct}%`;
       card.probs.textContent = ranked.slice(0, 3).map(([k, v]) => `${k.replace(/_/g, " ")} ${(v * 100).toFixed(0)}%`).join(" · ");
       card.stats.textContent = [
-        `mood ${npc.mood}/3`,
+        `fav ${npc.favor}`,
+        `mood ${Math.round(npc.mood)}/3`,
         `talk P=${npc.wantsToTalk.toFixed(2)}`,
         d.latencyMs != null ? `${d.latencyMs}ms` : "-",
         d.inputTokens != null ? `${d.inputTokens} tok` : "",
@@ -816,6 +1326,7 @@ function buildInspector() {
 }
 
 buildInspector();
+updateHUD();
 
 let last = performance.now();
 function loop(now) {

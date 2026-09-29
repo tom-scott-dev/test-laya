@@ -105,3 +105,40 @@ export const talkQuestions: Record<string, Question> = {
     instructions: "Does this townsperson want to continue talking?",
   },
 };
+
+export interface QuestSituation {
+  name: string;
+  persona: string;
+  relationship: string;
+  timeOfDay: string;
+  worldNotes: string;
+}
+
+export function buildQuestState(s: QuestSituation): string {
+  return (
+    `${s.name} is ${s.persona} The traveler is ${s.relationship} to you. ` +
+    `It is ${s.timeOfDay}. ${s.worldNotes ? `Town happenings: ${s.worldNotes}.` : ""} ` +
+    "Decide on a small errand the traveler could help with."
+  );
+}
+
+export const questQuestions: Record<string, Question> = {
+  errand: {
+    type: "choice",
+    instructions: "What errand should this townsperson ask the traveler to help with?",
+    criteria: {
+      fetch_item: "Ask the traveler to gather a few supplies and bring them back",
+      deliver_message: "Send a short spoken message to another townsperson",
+      rest_and_return: "Tell the traveler to rest and come back later",
+    },
+  },
+  reward: {
+    type: "score",
+    instructions: "How generous should the reward for this errand be?",
+    criteria: ["modest", "decent", "generous", "princely"],
+  },
+  willingness: {
+    type: "noul",
+    instructions: "Does this townsperson offer this errand to the traveler right now?",
+  },
+};

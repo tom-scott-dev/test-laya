@@ -1,8 +1,8 @@
 import express from "express";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { decide, talk, modelStatus, ensureLaya } from "./brain.js";
-import type { Situation, TalkSituation } from "./prompts.js";
+import { decide, talk, quest, modelStatus, ensureLaya } from "./brain.js";
+import type { QuestSituation, Situation, TalkSituation } from "./prompts.js";
 
 const app = express();
 app.use(express.json({ limit: "64kb" }));
@@ -41,6 +41,19 @@ app.post("/api/talk", async (req, res) => {
   }
   try {
     res.json({ result: await talk(situation) });
+  } catch (err) {
+    res.status(503).json({ error: String(err instanceof Error ? err.message : err) });
+  }
+});
+
+app.post("/api/quest", async (req, res) => {
+  const situation = (req.body as { situation?: QuestSituation }).situation;
+  if (!situation) {
+    res.status(400).json({ error: "body.situation is required" });
+    return;
+  }
+  try {
+    res.json({ result: await quest(situation) });
   } catch (err) {
     res.status(503).json({ error: String(err instanceof Error ? err.message : err) });
   }
