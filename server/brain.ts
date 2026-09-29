@@ -2,6 +2,7 @@ import { Laya } from "@receptron/laya";
 import type { ChoiceAnswer, NoulAnswer, ScoreAnswer, SystemOneResult } from "@receptron/laya";
 import { bundleStatus, ensureLocalBundle, type BundleStatus } from "./downloader.js";
 import {
+  buildQuestState,
   buildState,
   buildTalkState,
   decideQuestions,

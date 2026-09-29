@@ -452,13 +452,15 @@ async function maybeOfferQuest(npc) {
     return;
   }
   let q;
+  const rewardGold = 8 + Math.round(r.reward) * 6;
+  const rewardFavor = 10 + Math.round(r.reward) * 3;
   if (r.errand === "fetch_item") {
     const item = ITEMS[Math.floor(Math.random() * ITEMS.length)];
     const need = 3;
     q = {
       giverId: npc.id, giverName: npc.name, type: "fetch",
       item: item.id, need,
-      rewardGold: 8 + r.reward * 6, rewardFavor: 10 + r.reward * 3,
+      rewardGold, rewardFavor,
     };
     spawnQuestPickups(item.id, need, item.spot);
     toast(`${npc.name} needs ${need} ${item.label}. Gather them nearby.`);
@@ -468,7 +470,7 @@ async function maybeOfferQuest(npc) {
     q = {
       giverId: npc.id, giverName: npc.name, type: "message",
       targetId: t.id, targetName: t.name, delivered: false,
-      rewardGold: 8 + r.reward * 6, rewardFavor: 10 + r.reward * 3,
+      rewardGold, rewardFavor,
     };
     toast(`${npc.name} sends a message to ${t.name}. Deliver it.`);
   }
